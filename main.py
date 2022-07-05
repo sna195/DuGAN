@@ -1,18 +1,14 @@
 import argparse
 import os
+
 import numpy as np
-import math
-
+import torch
+import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.utils import save_image
-
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from torch.autograd import Variable
-
-import torch.nn as nn
-import torch.nn.functional as F
-import torch
+from torchvision.utils import save_image
 
 os.makedirs("images", exist_ok=True)
 
@@ -26,7 +22,7 @@ parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads 
 parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
 parser.add_argument("--img_size", type=int, default=28, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=400, help="interval betwen image samples")
+parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
 opt = parser.parse_args()
 print(opt)
 
@@ -147,6 +143,8 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 #  Training
 # ----------
 
+const_z = Variable(Tensor(np.random.normal(0, 1, (opt.imgs.shape, opt.latent_dim))))
+
 for epoch in range(opt.n_epochs):
     for i, (imgs, _) in enumerate(dataloader):
 
@@ -164,10 +162,10 @@ for epoch in range(opt.n_epochs):
         optimizer_G.zero_grad()
 
         # Sample noise as generator input
-        z = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim))))
+        z_gen = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim))))
 
         # Generate a batch of images
-        gen_imgs = generator(z)
+        gen_imgs = generator(z_gen)
 
         # Loss measures generator's ability to fool the discriminator
         g_loss = adversarial_loss(discriminator(gen_imgs), valid)
@@ -199,7 +197,7 @@ for epoch in range(opt.n_epochs):
         dgen_imgs = generator(const_z)
 
         # Loss measures generator's ability to fool the discriminator
-        dg_loss = l(dgen_imgs, gen_imgs)
+        dg_loss = torch.norm(dgen_imgs - gen_imgs)
 
         dg_loss.backward()
         optimizer_DG.step()
