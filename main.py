@@ -9,8 +9,26 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.utils import save_image
+#import easydict
+
+"""
+opt = easydict.EasyDict({
+    "n_epochs": 200,
+    "batch_size": 64,
+    "lr": 0.0002,
+    "b1": 0.5,
+    "b2": 0.999,
+    "n_cpu": 8,
+    "latent_dim": 100,
+    "img_size": 28,
+    "channels": 1,
+    "sample_interval": 400,
+    "alpha": 0.001
+})
+"""
 
 os.makedirs("images", exist_ok=True)
+os.makedirs("images_dg", exist_ok=True)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
@@ -23,6 +41,7 @@ parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality 
 parser.add_argument("--img_size", type=int, default=28, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
 parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
+parser.add_argument("--alpha", type=float, default=0.001, help="hyper parameter of l2 norm")
 opt = parser.parse_args()
 print(opt)
 
@@ -130,6 +149,7 @@ dataloader = torch.utils.data.DataLoader(
     ),
     batch_size=opt.batch_size,
     shuffle=True,
+    drop_last=True
 )
 
 # Optimizers
@@ -143,7 +163,7 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 #  Training
 # ----------
 
-const_z = Variable(Tensor(np.random.normal(0, 1, (opt.imgs.shape, opt.latent_dim))))
+const_z = Variable(Tensor(np.random.normal(0, 1, (opt.batch_size, opt.latent_dim))))
 
 for epoch in range(opt.n_epochs):
     for i, (imgs, _) in enumerate(dataloader):
@@ -154,6 +174,8 @@ for epoch in range(opt.n_epochs):
 
         # Configure input
         real_imgs = Variable(imgs.type(Tensor))
+
+        torch.autograd.set_detect_anomaly(True)
 
         # -----------------
         #  Train Generator
@@ -170,8 +192,25 @@ for epoch in range(opt.n_epochs):
         # Loss measures generator's ability to fool the discriminator
         g_loss = adversarial_loss(discriminator(gen_imgs), valid)
 
+        # ---------------------------
+        #  Train DuplicatedGenerator
+        # ---------------------------
+
+        optimizer_DG.zero_grad()
+
+        # Generate a batch of images
+        dgen_imgs = generator(const_z)
+
+        # Loss measures generator's ability to fool the discriminator
+        dg_loss = torch.mean(torch.sum(torch.sum((dgen_imgs - gen_imgs.detach()) ** 2, 3), 2))
+
+        g_loss = g_loss - opt.alpha * torch.mean(torch.sum(torch.sum((dgen_imgs.detach() - gen_imgs) ** 2, 3), 2))
+
         g_loss.backward()
         optimizer_G.step()
+
+        # dg_loss.backward()
+        # optimizer_DG.step()
 
         # ---------------------
         #  Train Discriminator
@@ -187,21 +226,6 @@ for epoch in range(opt.n_epochs):
         d_loss.backward()
         optimizer_D.step()
 
-        # ---------------------------
-        #  Train DuplicatedGenerator
-        # ---------------------------
-
-        optimizer_DG.zero_grad()
-
-        # Generate a batch of images
-        dgen_imgs = generator(const_z)
-
-        # Loss measures generator's ability to fool the discriminator
-        dg_loss = torch.norm(dgen_imgs - gen_imgs)
-
-        dg_loss.backward()
-        optimizer_DG.step()
-
         print(
             "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
             % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
@@ -210,3 +234,4 @@ for epoch in range(opt.n_epochs):
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
             save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+            save_image(dgen_imgs.data[:25], "images_dg/%d.png" % batches_done, nrow=5, normalize=True)
