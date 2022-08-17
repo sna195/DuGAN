@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 """
 import easydict
 
-
 opt = easydict.EasyDict({
     "n_epochs": 200,
     "batch_size": 64,
