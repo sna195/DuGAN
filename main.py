@@ -9,9 +9,13 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.utils import save_image
-#import easydict
+import ..gs as gs
+import matplotlib.pyplot as plt
 
 """
+import easydict
+
+
 opt = easydict.EasyDict({
     "n_epochs": 200,
     "batch_size": 64,
@@ -22,13 +26,14 @@ opt = easydict.EasyDict({
     "latent_dim": 100,
     "img_size": 28,
     "channels": 1,
-    "sample_interval": 400,
-    "alpha": 0.001
+    "sample_interval": 5000,
+    "alpha": 0.0005
 })
 """
 
 os.makedirs("images", exist_ok=True)
 os.makedirs("images_dg", exist_ok=True)
+os.makedirs("../images_trained", exist_ok=True)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
@@ -40,8 +45,8 @@ parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads 
 parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
 parser.add_argument("--img_size", type=int, default=28, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
-parser.add_argument("--alpha", type=float, default=0.001, help="hyper parameter of l2 norm")
+parser.add_argument("--sample_interval", type=int, default=5000, help="interval between image samples")
+parser.add_argument("--alpha", type=float, default=0.0005, help="hyper parameter of l2 norm")
 opt = parser.parse_args()
 print(opt)
 
@@ -137,10 +142,10 @@ if cuda:
     adversarial_loss.cuda()
 
 # Configure data loader
-os.makedirs("../../data/mnist", exist_ok=True)
+os.makedirs("../data/mnist", exist_ok=True)
 dataloader = torch.utils.data.DataLoader(
     datasets.MNIST(
-        "../../data/mnist",
+        "../data/mnist",
         train=True,
         download=True,
         transform=transforms.Compose(
@@ -235,3 +240,44 @@ for epoch in range(opt.n_epochs):
         if batches_done % opt.sample_interval == 0:
             save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
             save_image(dgen_imgs.data[:25], "images_dg/%d.png" % batches_done, nrow=5, normalize=True)
+
+
+# ------
+# Test
+# ------
+
+os.makedirs("../data/mnist_test", exist_ok=True)
+test_data = datasets.MNIST(
+    "../data/mnist_test",
+    train=False,
+    download=True,
+    transform=transforms.Compose(
+        [transforms.Resize(opt.img_size), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
+    )
+)
+
+os.makedirs("../images_trained/lambda%.4f" % opt.alpha, exist_ok=True)
+z_test = Variable(Tensor(np.random.normal(0, 1, (len(test_data.data), opt.latent_dim))))
+trained_imgs = generator(z_test)
+for i, img in enumerate(trained_imgs):
+    save_image(img, "../images_trained/lambda%.4f/%d.png" % (opt.alpha, i), normalize=True)
+
+# -----------------
+# Geometry score
+# -----------------
+
+test_data = np.reshape(test_data.data, (-1, test_data.data.size()[1] ** 2))
+rlts_gan = gs.rlts(test_data, gamma=1.0/128, n=100)
+mrlt_gan = np.mean(rlts_gan, axis=0)
+gs.fancy_plot(mrlt_gan, label='MRLT of GAN')
+plt.xlim([0, 30])
+plt.legend()
+
+trained_imgs = np.reshape(trained_imgs, (-1, test_data.data.size()[1] ** 2))
+rlts_du = gs.rlts(trained_imgs, gamma=1.0/128, n=100)
+mrlt_du = np.mean(rlts_du, axis=0)
+gs.fancy_plot(mrlt_du, label='MRLT of DuGAN')
+plt.xlim([0, 30])
+plt.legend()
+
+plt.savefig("../dugan_gs.png")
