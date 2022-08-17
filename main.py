@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.utils import save_image
-import ..gs as gs
+from ..geometry-sccore import gs
 import matplotlib.pyplot as plt
 
 """
