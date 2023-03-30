@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.utils import save_image
-from ..geometry-sccore import gs
+from ..geometry-score import gs
 import matplotlib.pyplot as plt
 
 """
@@ -49,6 +49,7 @@ parser.add_argument("--alpha", type=float, default=0.0005, help="hyper parameter
 opt = parser.parse_args()
 print(opt)
 
+a = opt.n_cpu
 img_shape = (opt.channels, opt.img_size, opt.img_size)
 
 cuda = True if torch.cuda.is_available() else False
@@ -203,7 +204,7 @@ for epoch in range(opt.n_epochs):
         optimizer_DG.zero_grad()
 
         # Generate a batch of images
-        dgen_imgs = generator(const_z)
+        dgen_imgs = duplicated_generator(const_z)
 
         # Loss measures generator's ability to fool the discriminator
         dg_loss = torch.mean(torch.sum(torch.sum((dgen_imgs - gen_imgs.detach()) ** 2, 3), 2))
@@ -265,14 +266,14 @@ for i, img in enumerate(trained_imgs):
 # Geometry score
 # -----------------
 
-test_data = np.reshape(test_data.data, (-1, test_data.data.size()[1] ** 2))
-rlts_gan = gs.rlts(test_data, gamma=1.0/128, n=100)
-mrlt_gan = np.mean(rlts_gan, axis=0)
-gs.fancy_plot(mrlt_gan, label='MRLT of GAN')
+test_data = np.array(np.reshape(test_data.data, (-1, opt.img_size ** 2)))
+rlts = gs.rlts(test_data, gamma=1.0/128, n=100)
+mrlt = np.mean(rlts, axis=0)
+gs.fancy_plot(mrlt, label='MRLT of GAN')
 plt.xlim([0, 30])
 plt.legend()
 
-trained_imgs = np.reshape(trained_imgs, (-1, test_data.data.size()[1] ** 2))
+trained_imgs = np.array(np.reshape(trained_imgs, (-1, opt.img_size ** 2)))
 rlts_du = gs.rlts(trained_imgs, gamma=1.0/128, n=100)
 mrlt_du = np.mean(rlts_du, axis=0)
 gs.fancy_plot(mrlt_du, label='MRLT of DuGAN')
